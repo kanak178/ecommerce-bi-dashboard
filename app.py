@@ -21,6 +21,58 @@ def init_connection() -> Client:
 supabase = init_connection()
 
 # ---------------------------------------------------------
+# PASSWORD RESET LANDING (handles the link from the reset email)
+# ---------------------------------------------------------
+# Supabase puts the reset token in the URL's hash fragment (after #),
+# which only the browser can read — not the Streamlit server. This small
+# script copies it into the normal URL (after ?) so our Python code can see it.
+import streamlit.components.v1 as components
+
+components.html(
+    """
+    <script>
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token') && hash.includes('type=recovery')) {
+        const params = new URLSearchParams(hash.substring(1));
+        const url = new URL(window.location.href);
+        url.hash = '';
+        url.searchParams.set('access_token', params.get('access_token'));
+        url.searchParams.set('refresh_token', params.get('refresh_token') || '');
+        url.searchParams.set('type', 'recovery');
+        window.location.replace(url.toString());
+    }
+    </script>
+    """,
+    height=0,
+)
+
+query_params = st.query_params
+if query_params.get("type") == "recovery" and query_params.get("access_token"):
+    st.title("🔑 Reset Your Password")
+    access_token = query_params.get("access_token")
+    refresh_token = query_params.get("refresh_token", "")
+
+    with st.form("reset_password_form"):
+        new_pw = st.text_input("New password", type="password")
+        confirm_pw = st.text_input("Confirm new password", type="password")
+        submit_reset = st.form_submit_button("Update password")
+
+    if submit_reset:
+        if new_pw != confirm_pw:
+            st.error("Passwords do not match.")
+        elif len(new_pw) < 6:
+            st.error("Password must be at least 6 characters.")
+        else:
+            try:
+                supabase.auth.set_session(access_token, refresh_token)
+                supabase.auth.update_user({"password": new_pw})
+                st.success("Password updated! Close this tab and reopen the dashboard link to log in with your new password.")
+                st.query_params.clear()
+            except Exception as e:
+                st.error(f"Could not update password. The link may have expired — request a new one. ({e})")
+    st.stop()
+
+# ---------------------------------------------------------
 # AUTH: LOGIN / SIGN UP / FORGOT PASSWORD SCREEN
 # ---------------------------------------------------------
 if "user" not in st.session_state:
