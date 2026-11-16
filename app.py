@@ -21,25 +21,67 @@ def init_connection() -> Client:
 supabase = init_connection()
 
 # ---------------------------------------------------------
-# AUTH: LOGIN SCREEN
+# AUTH: LOGIN / SIGN UP / FORGOT PASSWORD SCREEN
 # ---------------------------------------------------------
 if "user" not in st.session_state:
     st.session_state.user = None
 
 def login_screen():
-    st.title("🔒 E-Commerce BI Dashboard — Login")
-    st.caption("Please sign in to access the dashboard.")
-    with st.form("login_form"):
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Log in")
-    if submitted:
-        try:
-            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-            st.session_state.user = res.user
-            st.rerun()
-        except Exception as e:
-            st.error("Login failed. Check your email/password and try again.")
+    st.title("🔒 E-Commerce BI Dashboard")
+    st.caption("Sign in to access the dashboard.")
+
+    tab_login, tab_signup, tab_forgot = st.tabs(["Log in", "Sign up", "Forgot password"])
+
+    # ---------------- LOG IN ----------------
+    with tab_login:
+        with st.form("login_form"):
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            submitted = st.form_submit_button("Log in")
+        if submitted:
+            try:
+                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                st.session_state.user = res.user
+                st.rerun()
+            except Exception:
+                st.error("Login failed. Check your email/password and try again.")
+
+    # ---------------- SIGN UP ----------------
+    with tab_signup:
+        with st.form("signup_form"):
+            new_email = st.text_input("Email", key="signup_email")
+            new_password = st.text_input("Password", type="password", key="signup_password")
+            confirm_password = st.text_input("Confirm Password", type="password", key="signup_confirm")
+            signup_submitted = st.form_submit_button("Create account")
+        if signup_submitted:
+            if not new_email or not new_password:
+                st.error("Please fill in both email and password.")
+            elif new_password != confirm_password:
+                st.error("Passwords do not match.")
+            elif len(new_password) < 6:
+                st.error("Password must be at least 6 characters.")
+            else:
+                try:
+                    supabase.auth.sign_up({"email": new_email, "password": new_password})
+                    st.success("Account created! Check your email to confirm (if required), then log in from the 'Log in' tab.")
+                except Exception as e:
+                    st.error(f"Sign up failed: {e}")
+
+    # ---------------- FORGOT PASSWORD ----------------
+    with tab_forgot:
+        st.caption("Enter your email and we'll send a password reset link.")
+        with st.form("forgot_form"):
+            reset_email = st.text_input("Email", key="forgot_email")
+            reset_submitted = st.form_submit_button("Send reset link")
+        if reset_submitted:
+            if not reset_email:
+                st.error("Please enter your email.")
+            else:
+                try:
+                    supabase.auth.reset_password_for_email(reset_email)
+                    st.success("If an account exists with that email, a reset link has been sent. Check your inbox.")
+                except Exception as e:
+                    st.error(f"Could not send reset email: {e}")
 
 if st.session_state.user is None:
     login_screen()
@@ -111,7 +153,6 @@ sel_subcats = st.sidebar.multiselect("Sub-Category", subcats)
 min_date, max_date = df["order_date"].min(), df["order_date"].max()
 date_range = st.sidebar.date_input("Order Date Range", value=(min_date, max_date))
 
-# Apply filters
 filtered = df.copy()
 if sel_states:
     filtered = filtered[filtered["state"].isin(sel_states)]
